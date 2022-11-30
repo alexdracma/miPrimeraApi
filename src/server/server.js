@@ -3,17 +3,28 @@ const express = require('express')
 const app = express()
 const db = require('./database.js')
 const md5 = require('md5')
+const fs = require('fs')
+
+const cors = require('cors')
+app.use(cors({
+  origin: '*'
+}))
 
 const bodyParser = require('body-parser')
 app.use(bodyParser.urlencoded({ extended: false }))
 app.use(bodyParser.json())
 
-// Server port
-const HTTP_PORT = 8000
-// Start server
-app.listen(HTTP_PORT, () => {
-  console.log('Server running on port %PORT%'.replace('%PORT%', HTTP_PORT))
+const https = require('https')
+const options = {
+  key: fs.readFileSync('./src/server/ssl/key.pem'),
+  cert: fs.readFileSync('./src/server/ssl/cert.pem')
+}
+
+const HTTPS_PORT = 4334
+https.createServer(options, app).listen(HTTPS_PORT, () => {
+  console.log('Server running on port %PORT%'.replace('%PORT%', HTTPS_PORT))
 })
+
 // Root endpoint
 app.get('/', (req, res, next) => {
   res.json({ message: 'Ok' })
@@ -119,6 +130,48 @@ app.delete('/api/user/:id', (req, res, next) => {
       }
       res.json({ message: 'deleted', changes: this.changes })
     })
+})
+
+// login endpoints
+
+app.post('/api/login/', (req, res, next) => {
+  const errors = []
+  if (!req.body.email) {
+    errors.push('No has especificado un email')
+  }
+  if (!req.body.password) {
+    errors.push('No has especificado una contraseña')
+  }
+
+  if (errors.length) {
+    res.status(400).json({ error: errors.join(',') })
+    return
+  }
+
+  const data = {
+    email: req.body.email,
+    password: req.body.password
+  }
+  const sql = 'SELECT email, password FROM user WHERE email = ? AND password = ?'
+  const params = [data.email, md5(data.password)]
+
+  db.get(sql, params, (err, user) => {
+    if (err) {
+      res.status(400).json({ error: err.message })
+      return
+    }
+    if (user) {
+      res.json({
+        message: 'success',
+        data: user
+      })
+    } else {
+      res.json({
+        message: '¡Contraseña incorrecta!',
+        params
+      })
+    }
+  })
 })
 
 // Default response for any other request
